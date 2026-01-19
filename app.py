@@ -13,13 +13,18 @@ st.caption("Explore import-shock shortfalls and risk scores by country & commodi
 # Helpers
 @st.cache_data(ttl=60)
 def get_json(url: str):
-    r = requests.get(url, timeout=30)
-    r.raise_for_status()
-    return r.json()
+    try:
+        r = requests.get(url, timeout=30)
+        r.raise_for_status()
+        return r.json()
+    except requests.exceptions.RequestException as e:
+        st.warning("API is waking up. Please wait a few seconds and refresh.")
+        return {}
 
 @st.cache_data(ttl=60)
 def get_commodities():
-    return get_json(f"{API}/meta/commodities")["commodities"]
+    data = get_json(f"{API}/meta/commodities")
+    return data.get("commodities", [])
 
 @st.cache_data(ttl=60)
 def get_cached_shocks():
