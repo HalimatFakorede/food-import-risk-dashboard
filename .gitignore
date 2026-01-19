@@ -1,0 +1,12 @@
+# Data files
+data/
+*.parquet
+
+# Virtual environment
+.venv/
+
+# Python cache
+__pycache__/
+
+# Streamlit config/cache
+.streamlit/
