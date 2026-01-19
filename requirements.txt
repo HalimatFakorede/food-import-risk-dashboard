@@ -1,7 +1,6 @@
-fastapi
-uvicorn
-gunicorn
-pandas
 streamlit
+pandas
 requests
 altair
+pyarrow
+fastapi

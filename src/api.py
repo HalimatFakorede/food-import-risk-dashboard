@@ -1,3 +1,7 @@
+# NOTE:
+# This API is optional and not used in the Streamlit Cloud deployment.
+# The live dashboard loads parquet files directly from GitHub Releases.
+
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 import pandas as pd
@@ -5,12 +9,13 @@ import numpy as np
 from pathlib import Path
 from src.simulate import simulate_import_shock
 import re
+import os
 
 app = FastAPI(title="Food Import Risk API", version="1.0")
 print(">>> LOADED src/api.py VERSION = 2026-01-18 A <<<")
 
 ROOT = Path(__file__).resolve().parents[1]
-PROCESSED = ROOT / "data" / "processed"
+PROCESSED = Path(os.getenv("PROCESSED_DIR", (ROOT / "data" / "processed")))
 
 RISK_FILE = PROCESSED / "risk_index_latest.parquet"
 BASE_FILE = PROCESSED / "base_country_commodity_year.parquet"
