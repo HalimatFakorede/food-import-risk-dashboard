@@ -3,23 +3,30 @@ import pandas as pd
 import requests
 import altair as alt
 
-API = st.secrets.get("API_URL", "http://127.0.0.1:8000")
+API = st.secrets.get("API_URL", "http://127.0.0.1:8000").rstrip("/")
 
 st.set_page_config(page_title="Food Import Risk Dashboard", layout="wide")
 st.title("Food Import Risk Dashboard")
 st.caption("Explore import-shock shortfalls and risk scores by country & commodity.")
+st.caption(f"API in use: {API}")
 
 
 # Helpers
 @st.cache_data(ttl=60)
 def get_json(url: str):
     try:
-        r = requests.get(url, timeout=30)
+        r = requests.get(url, timeout=120) 
         r.raise_for_status()
         return r.json()
     except requests.exceptions.RequestException as e:
-        st.warning("API is waking up. Please wait a few seconds and refresh.")
+        st.error(f"API call failed: {url}")
+        st.error(str(e))
         return {}
+    
+health = get_json(f"{API}/health")
+if not health:
+    st.warning("API is not responding yet. If you just opened the app, wait ~30–60s and refresh.")
+
 
 @st.cache_data(ttl=60)
 def get_commodities():
