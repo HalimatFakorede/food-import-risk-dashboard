@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+gunicorn
+pandas
+streamlit
+requests
+altair
