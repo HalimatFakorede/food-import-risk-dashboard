@@ -11,13 +11,13 @@ st.caption("Data source: GitHub Releases (parquet files)")
 
 
 # GitHub Release file URLs
-RISK_URL = "https://github.com/HalimatFakorede/volatility-risk-system/releases/download/v1.0-data/risk_index_latest.parquet"
+RISK_URL = "https://github.com/HalimatFakorede/food-import-risk-dashboard/releases/download/v1.0-data/risk_index_latest.parquet"
 
 SHOCK_URLS = {
-    0.10: "https://github.com/HalimatFakorede/volatility-risk-system/releases/download/v1.0-data/shock_simulation_latest_importdrop10.parquet",
-    0.20: "https://github.com/HalimatFakorede/volatility-risk-system/releases/download/v1.0-data/shock_simulation_latest_importdrop20.parquet",
-    0.35: "https://github.com/HalimatFakorede/volatility-risk-system/releases/download/v1.0-data/shock_simulation_latest_importdrop35.parquet",
-    0.50: "https://github.com/HalimatFakorede/volatility-risk-system/releases/download/v1.0-data/shock_simulation_latest_importdrop50.parquet",
+    0.10: "https://github.com/HalimatFakorede/food-import-risk-dashboard/releases/download/v1.0-data/shock_simulation_latest_importdrop10.parquet",
+    0.20: "https://github.com/HalimatFakorede/food-import-risk-dashboard/releases/download/v1.0-data/shock_simulation_latest_importdrop20.parquet",
+    0.35: "https://github.com/HalimatFakorede/food-import-risk-dashboard/releases/download/v1.0-data/shock_simulation_latest_importdrop35.parquet",
+    0.50: "https://github.com/HalimatFakorede/food-import-risk-dashboard/releases/download/v1.0-data/shock_simulation_latest_importdrop50.parquet",
 }
 
 
