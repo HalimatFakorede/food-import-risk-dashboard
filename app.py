@@ -32,6 +32,7 @@ def load_parquet(url: str) -> pd.DataFrame:
     r.raise_for_status()
     return pd.read_parquet(BytesIO(r.content))
 
+
 def add_shortfall_abs(df: pd.DataFrame) -> pd.DataFrame:
     if "shortfall_abs" not in df.columns:
         if "apparent_consumption" in df.columns and "consumption_shocked" in df.columns:
@@ -40,6 +41,7 @@ def add_shortfall_abs(df: pd.DataFrame) -> pd.DataFrame:
                 - pd.to_numeric(df["consumption_shocked"], errors="coerce").fillna(0)
             ).clip(lower=0)
     return df
+
 
 def safe_num(s):
     return pd.to_numeric(s, errors="coerce")
@@ -135,15 +137,23 @@ def build_top(sim_df: pd.DataFrame) -> pd.DataFrame:
         if col in df.columns:
             df[col] = safe_num(df[col])
 
-    # Sort biggest absolute shortfall first
+    # ✅ SAFE SORT (only use columns that exist)
+    sort_cols = [c for c in ["shortfall_abs", "risk_score", "apparent_consumption"] if c in df.columns]
+    if not sort_cols:
+        # If somehow none exist, just return empty (better than crashing)
+        return pd.DataFrame()
+
     df = df.sort_values(
-        ["shortfall_abs", "risk_score", "apparent_consumption"],
-        ascending=[False, False, False],
+        sort_cols,
+        ascending=[False] * len(sort_cols),
         na_position="last"
     ).head(n)
 
-    # Shortfall in millions
-    df["shortfall_abs_m"] = (df["shortfall_abs"] / 1_000_000).round(2)
+    # Shortfall in millions (only if shortfall_abs exists)
+    if "shortfall_abs" in df.columns:
+        df["shortfall_abs_m"] = (safe_num(df["shortfall_abs"]) / 1_000_000).round(2)
+    else:
+        df["shortfall_abs_m"] = None
 
     # Table columns
     preferred = [
@@ -156,8 +166,8 @@ def build_top(sim_df: pd.DataFrame) -> pd.DataFrame:
     preferred = [c for c in preferred if c in df.columns]
     return df[preferred].copy()
 
+
 df_a = build_top(sim_a)
-df_b_view = pd.DataFrame()
 
 
 # Top metrics
@@ -187,14 +197,18 @@ if compare_mode:
         if merged.empty:
             st.warning("No overlapping country+commodity pairs found for comparison.")
         else:
-            merged["shortfall_diff_m"] = (safe_num(merged["shortfall_abs_m_b"]) - safe_num(merged["shortfall_abs_m_a"])).round(2)
+            merged["shortfall_diff_m"] = (
+                safe_num(merged.get("shortfall_abs_m_b")) - safe_num(merged.get("shortfall_abs_m_a"))
+            ).round(2)
 
-            view = merged[[
-                "country", "commodity",
-                "shortfall_abs_m_a", "shortfall_abs_m_b",
-                "shortfall_diff_m",
-                "risk_band_b"
-            ]].sort_values("shortfall_diff_m", ascending=False)
+            view = merged[
+                [c for c in [
+                    "country", "commodity",
+                    "shortfall_abs_m_a", "shortfall_abs_m_b",
+                    "shortfall_diff_m",
+                    "risk_band_b"
+                ] if c in merged.columns]
+            ].sort_values("shortfall_diff_m", ascending=False)
 
             st.dataframe(view, use_container_width=True)
 
@@ -205,7 +219,7 @@ if compare_mode:
                     x=alt.X("shortfall_diff_m:Q", title="Change in shortfall (million tonnes)"),
                     y=alt.Y("country:N", sort="-x"),
                     color=alt.Color("risk_band_b:N", title="Risk band (shock B)"),
-                    tooltip=["country", "commodity", "shortfall_diff_m", "risk_band_b"]
+                    tooltip=[c for c in ["country", "commodity", "shortfall_diff_m", "risk_band_b"] if c in view.columns]
                 )
                 .properties(height=420)
             )
@@ -223,25 +237,26 @@ if df_a.empty:
 else:
     st.dataframe(df_a, use_container_width=True)
 
-    # Chart
-    chart_df = (
-        df_a.groupby(["country", "risk_band"], as_index=False)
-            .agg(shortfall_abs_m=("shortfall_abs_m", "sum"))
-            .sort_values("shortfall_abs_m", ascending=False)
-    )
-
-    chart = (
-        alt.Chart(chart_df)
-        .mark_bar()
-        .encode(
-            x=alt.X("shortfall_abs_m:Q", title="Shortfall (million tonnes)"),
-            y=alt.Y("country:N", sort="-x"),
-            color=alt.Color("risk_band:N", title="Risk band"),
-            tooltip=["country", "shortfall_abs_m", "risk_band"]
+    # Chart (only if needed columns exist)
+    if "risk_band" in df_a.columns and "shortfall_abs_m" in df_a.columns:
+        chart_df = (
+            df_a.groupby(["country", "risk_band"], as_index=False)
+                .agg(shortfall_abs_m=("shortfall_abs_m", "sum"))
+                .sort_values("shortfall_abs_m", ascending=False)
         )
-        .properties(height=420)
-    )
-    st.altair_chart(chart, use_container_width=True)
+
+        chart = (
+            alt.Chart(chart_df)
+            .mark_bar()
+            .encode(
+                x=alt.X("shortfall_abs_m:Q", title="Shortfall (million tonnes)"),
+                y=alt.Y("country:N", sort="-x"),
+                color=alt.Color("risk_band:N", title="Risk band"),
+                tooltip=["country", "shortfall_abs_m", "risk_band"]
+            )
+            .properties(height=420)
+        )
+        st.altair_chart(chart, use_container_width=True)
 
 
 # Country Drilldown
@@ -249,41 +264,50 @@ st.divider()
 st.subheader("Country Drilldown")
 st.caption("Pick a country from the current results and see its risk across commodities.")
 
-countries = sorted(df_a["country"].dropna().unique().tolist()) if not df_a.empty else []
+countries = sorted(df_a["country"].dropna().unique().tolist()) if not df_a.empty and "country" in df_a.columns else []
 if not countries:
     st.info("No country names available for drilldown.")
 else:
     country_selected = st.selectbox("Select a country", countries)
 
     # Filter shock data for selected country
-    drill = sim_a[sim_a["country"] == country_selected].copy()
+    drill = sim_a[sim_a["country"] == country_selected].copy() if "country" in sim_a.columns else pd.DataFrame()
 
     # Join risk index
-    drill = drill.merge(
-        risk[["country", "commodity", "risk_score", "risk_band"]],
-        on=["country", "commodity"],
-        how="left"
-    )
+    if not drill.empty:
+        drill = drill.merge(
+            risk[["country", "commodity", "risk_score", "risk_band"]],
+            on=["country", "commodity"],
+            how="left"
+        )
 
-    drill = add_shortfall_abs(drill)
+        drill = add_shortfall_abs(drill)
 
-    # Clean & add shortfall in millions
-    drill["shortfall_abs_m"] = (safe_num(drill["shortfall_abs"]) / 1_000_000).round(2)
+        # Clean & add shortfall in millions
+        if "shortfall_abs" in drill.columns:
+            drill["shortfall_abs_m"] = (safe_num(drill["shortfall_abs"]) / 1_000_000).round(2)
+        else:
+            drill["shortfall_abs_m"] = None
 
-    cols = [
-        "country", "commodity",
-        "risk_score", "risk_band",
-        "import_dependency_ratio",
-        "shortfall_pct", "shortfall_abs_m",
-        "apparent_consumption",
-        "consumption_shocked",
-        "year"
-    ]
-    cols = [c for c in cols if c in drill.columns]
+        cols = [
+            "country", "commodity",
+            "risk_score", "risk_band",
+            "import_dependency_ratio",
+            "shortfall_pct", "shortfall_abs_m",
+            "apparent_consumption",
+            "consumption_shocked",
+            "year"
+        ]
+        cols = [c for c in cols if c in drill.columns]
 
-    drill = drill[cols].sort_values(["shortfall_abs_m", "risk_score"], ascending=[False, False])
+        drill = drill[cols].sort_values(
+            [c for c in ["shortfall_abs_m", "risk_score"] if c in drill.columns],
+            ascending=[False, False]
+        )
 
-    st.dataframe(drill, use_container_width=True)
+        st.dataframe(drill, use_container_width=True)
+    else:
+        st.info("No drilldown records found for this selection.")
 
 
 # Download
