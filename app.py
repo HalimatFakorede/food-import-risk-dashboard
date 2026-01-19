@@ -68,7 +68,10 @@ with st.sidebar:
 
     compare_mode = st.checkbox("Compare two shocks")
 
-    shocks = get_cached_shocks().get("shocks", [0.2, 0.35, 0.5])
+    shocks = get_cached_shocks().get("shocks")
+    if not shocks:
+        shocks = [0.2, 0.35, 0.5]
+
 
     shock_a = st.selectbox(
         "Shock %",
@@ -117,7 +120,10 @@ if compare_mode and shock_b is not None:
 
 # Top metrics
 c1, c2, c3 = st.columns(3)
-c1.metric("Shock %", f"{shock_a:.2f}")
+if shock_a is not None:
+    c1.metric("Shock %", f"{shock_a:.2f}")
+else:
+    c1.metric("Shock %", "—")
 c2.metric("Commodity", commodity)
 c3.metric("Records returned", len(df_a))
 
