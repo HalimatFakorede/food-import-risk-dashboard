@@ -139,6 +139,14 @@ Data is processed and cleaned into:
 
 ---
 
+## Project structure
+- `src/` FastAPI backend + simulation logic  
+- `app.py` Streamlit dashboard  
+- `notebooks/` data processing + cached shock generation  
+- `assets/` screenshots for the README
+
+---
+
 ## How to run locally
 
 ### 1. Start the API
