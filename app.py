@@ -3,7 +3,7 @@ import pandas as pd
 import requests
 import altair as alt
 
-API = "http://127.0.0.1:8000"
+API = "https://food-import-risk-api.onrender.com"
 
 st.set_page_config(page_title="Food Import Risk Dashboard", layout="wide")
 st.title("Food Import Risk Dashboard")
