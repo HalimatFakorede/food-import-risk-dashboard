@@ -8,6 +8,7 @@ st.set_page_config(page_title="Food Import Risk Dashboard", layout="wide")
 st.title("Food Import Risk Dashboard")
 st.caption("Explore import-shock shortfalls and risk scores by country & commodity.")
 st.caption("Data source: GitHub Releases (parquet files)")
+st.caption("Shortfall shown in million tonnes. Ranking is by absolute food loss, then risk score.")
 
 
 # GitHub Release file URLs
@@ -47,19 +48,46 @@ def safe_num(s):
     return pd.to_numeric(s, errors="coerce")
 
 
+def safe_sort(df: pd.DataFrame, by: list[str], ascending: list[bool] | None = None) -> pd.DataFrame:
+    """
+    Sort only by columns that exist AND have at least one non-null value.
+    Prevents KeyError/ValueError crashes.
+    """
+    if df is None or df.empty:
+        return df
+
+    cols = []
+    orders = []
+
+    if ascending is None:
+        ascending = [True] * len(by)
+
+    for col, asc in zip(by, ascending):
+        if col in df.columns:
+            if df[col].notna().any():
+                cols.append(col)
+                orders.append(asc)
+
+    if not cols:
+        return df
+
+    return df.sort_values(cols, ascending=orders, na_position="last")
+
+
 # Load core data
 with st.spinner("Loading risk index..."):
     risk = load_parquet(RISK_URL)
 
 # Region lists (simple)
 AFRICA = {
-    "Nigeria","Egypt","Algeria","Morocco","Tunisia","Kenya","Ethiopia",
-    "Ghana","Senegal","South Africa"
+    "Nigeria", "Egypt", "Algeria", "Morocco", "Tunisia", "Kenya", "Ethiopia",
+    "Ghana", "Senegal", "South Africa"
 }
 EU = {
-    "Germany","France","Italy","Spain","Netherlands","Belgium",
-    "Poland","Portugal","Greece","Austria","Sweden","Finland"
+    "Germany", "France", "Italy", "Spain", "Netherlands", "Belgium",
+    "Poland", "Portugal", "Greece", "Austria", "Sweden", "Finland"
 }
+
 
 def apply_region(df: pd.DataFrame, region: str) -> pd.DataFrame:
     if df.empty or "country" not in df.columns:
@@ -70,8 +98,12 @@ def apply_region(df: pd.DataFrame, region: str) -> pd.DataFrame:
         return df[df["country"].isin(EU)].copy()
     return df
 
+
 # Commodities from risk index
-all_commodities = sorted(risk["commodity"].dropna().unique().tolist())
+if "commodity" in risk.columns:
+    all_commodities = sorted(risk["commodity"].dropna().unique().tolist())
+else:
+    all_commodities = []
 
 
 # Sidebar controls
@@ -79,16 +111,10 @@ with st.sidebar:
     st.header("Controls")
 
     region = st.selectbox("Region filter", ["All", "Africa", "EU"])
-
     compare_mode = st.checkbox("Compare two shocks")
 
     shocks = sorted(list(SHOCK_URLS.keys()))
-
-    shock_a = st.selectbox(
-        "Shock %",
-        shocks,
-        index=shocks.index(0.35) if 0.35 in shocks else 0
-    )
+    shock_a = st.selectbox("Shock %", shocks, index=shocks.index(0.35) if 0.35 in shocks else 0)
 
     shock_b = None
     if compare_mode:
@@ -108,6 +134,7 @@ def load_shock_df(shock_pct: float) -> pd.DataFrame:
     df = add_shortfall_abs(df)
     return df
 
+
 with st.spinner("Loading shock simulation file(s)..."):
     sim_a = load_shock_df(shock_a)
 
@@ -117,43 +144,45 @@ if compare_mode and shock_b is not None:
         sim_b = load_shock_df(shock_b)
 
 
-# Build top table function
+# Build top table
 def build_top(sim_df: pd.DataFrame) -> pd.DataFrame:
-    # Merge risk score into simulation rows
-    df = sim_df.merge(
-        risk[["country", "commodity", "risk_score", "risk_band"]],
-        on=["country", "commodity"],
-        how="left"
-    )
+    if sim_df is None or sim_df.empty:
+        return pd.DataFrame()
+
+    # Merge risk score into simulation rows (be defensive: risk might miss cols)
+    risk_cols = [c for c in ["country", "commodity", "risk_score", "risk_band"] if c in risk.columns]
+    if "country" in sim_df.columns and "commodity" in sim_df.columns and set(["country", "commodity"]).issubset(risk_cols):
+        df = sim_df.merge(
+            risk[risk_cols],
+            on=["country", "commodity"],
+            how="left"
+        )
+    else:
+        df = sim_df.copy()
 
     # Filters
     df = apply_region(df, region)
 
-    if commodity != "All":
-        df = df[df["commodity"].str.lower() == commodity.lower()].copy()
+    if commodity != "All" and "commodity" in df.columns:
+        df = df[df["commodity"].astype(str).str.lower() == str(commodity).lower()].copy()
 
     # Ensure numeric
     for col in ["shortfall_abs", "shortfall_pct", "risk_score", "import_dependency_ratio", "apparent_consumption"]:
         if col in df.columns:
             df[col] = safe_num(df[col])
 
-    # ✅ SAFE SORT (only use columns that exist)
-    sort_cols = [c for c in ["shortfall_abs", "risk_score", "apparent_consumption"] if c in df.columns]
-    if not sort_cols:
-        # If somehow none exist, just return empty (better than crashing)
-        return pd.DataFrame()
-
-    df = df.sort_values(
-        sort_cols,
-        ascending=[False] * len(sort_cols),
-        na_position="last"
+    # Safe sort biggest absolute shortfall first
+    df = safe_sort(
+        df,
+        by=["shortfall_abs", "risk_score", "apparent_consumption"],
+        ascending=[False, False, False]
     ).head(n)
 
-    # Shortfall in millions (only if shortfall_abs exists)
+    # Shortfall in millions only if shortfall_abs exists
     if "shortfall_abs" in df.columns:
         df["shortfall_abs_m"] = (safe_num(df["shortfall_abs"]) / 1_000_000).round(2)
     else:
-        df["shortfall_abs_m"] = None
+        df["shortfall_abs_m"] = pd.NA
 
     # Table columns
     preferred = [
@@ -201,29 +230,33 @@ if compare_mode:
                 safe_num(merged.get("shortfall_abs_m_b")) - safe_num(merged.get("shortfall_abs_m_a"))
             ).round(2)
 
-            view = merged[
-                [c for c in [
-                    "country", "commodity",
-                    "shortfall_abs_m_a", "shortfall_abs_m_b",
-                    "shortfall_diff_m",
-                    "risk_band_b"
-                ] if c in merged.columns]
-            ].sort_values("shortfall_diff_m", ascending=False)
+            view_cols = [c for c in [
+                "country", "commodity",
+                "shortfall_abs_m_a", "shortfall_abs_m_b",
+                "shortfall_diff_m",
+                "risk_band_b"
+            ] if c in merged.columns]
+
+            view = merged[view_cols].copy()
+
+            # Safe sort
+            view = safe_sort(view, by=["shortfall_diff_m"], ascending=[False])
 
             st.dataframe(view, use_container_width=True)
 
-            chart = (
-                alt.Chart(view)
-                .mark_bar()
-                .encode(
-                    x=alt.X("shortfall_diff_m:Q", title="Change in shortfall (million tonnes)"),
-                    y=alt.Y("country:N", sort="-x"),
-                    color=alt.Color("risk_band_b:N", title="Risk band (shock B)"),
-                    tooltip=[c for c in ["country", "commodity", "shortfall_diff_m", "risk_band_b"] if c in view.columns]
+            if "shortfall_diff_m" in view.columns and "country" in view.columns:
+                chart = (
+                    alt.Chart(view)
+                    .mark_bar()
+                    .encode(
+                        x=alt.X("shortfall_diff_m:Q", title="Change in shortfall (million tonnes)"),
+                        y=alt.Y("country:N", sort="-x"),
+                        color=alt.Color("risk_band_b:N", title="Risk band (shock B)") if "risk_band_b" in view.columns else alt.value("steelblue"),
+                        tooltip=[c for c in ["country", "commodity", "shortfall_diff_m", "risk_band_b"] if c in view.columns]
+                    )
+                    .properties(height=420)
                 )
-                .properties(height=420)
-            )
-            st.altair_chart(chart, use_container_width=True)
+                st.altair_chart(chart, use_container_width=True)
 
     st.divider()
 
@@ -237,13 +270,14 @@ if df_a.empty:
 else:
     st.dataframe(df_a, use_container_width=True)
 
-    # Chart (only if needed columns exist)
-    if "risk_band" in df_a.columns and "shortfall_abs_m" in df_a.columns:
+    # Chart 
+    if all(c in df_a.columns for c in ["country", "risk_band", "shortfall_abs_m"]):
         chart_df = (
             df_a.groupby(["country", "risk_band"], as_index=False)
                 .agg(shortfall_abs_m=("shortfall_abs_m", "sum"))
-                .sort_values("shortfall_abs_m", ascending=False)
         )
+        chart_df["shortfall_abs_m"] = safe_num(chart_df["shortfall_abs_m"])
+        chart_df = safe_sort(chart_df, by=["shortfall_abs_m"], ascending=[False])
 
         chart = (
             alt.Chart(chart_df)
@@ -264,30 +298,33 @@ st.divider()
 st.subheader("Country Drilldown")
 st.caption("Pick a country from the current results and see its risk across commodities.")
 
-countries = sorted(df_a["country"].dropna().unique().tolist()) if not df_a.empty and "country" in df_a.columns else []
+countries = sorted(df_a["country"].dropna().unique().tolist()) if (not df_a.empty and "country" in df_a.columns) else []
 if not countries:
     st.info("No country names available for drilldown.")
 else:
     country_selected = st.selectbox("Select a country", countries)
 
-    # Filter shock data for selected country
-    drill = sim_a[sim_a["country"] == country_selected].copy() if "country" in sim_a.columns else pd.DataFrame()
+    drill = sim_a[sim_a["country"] == country_selected].copy() if ("country" in sim_a.columns) else pd.DataFrame()
 
-    # Join risk index
-    if not drill.empty:
-        drill = drill.merge(
-            risk[["country", "commodity", "risk_score", "risk_band"]],
-            on=["country", "commodity"],
-            how="left"
-        )
+    if drill.empty:
+        st.info("No drilldown records found for this selection.")
+    else:
+        # Join risk index
+        risk_cols = [c for c in ["country", "commodity", "risk_score", "risk_band"] if c in risk.columns]
+        if set(["country", "commodity"]).issubset(drill.columns) and set(["country", "commodity"]).issubset(risk_cols):
+            drill = drill.merge(
+                risk[risk_cols],
+                on=["country", "commodity"],
+                how="left"
+            )
 
         drill = add_shortfall_abs(drill)
 
-        # Clean & add shortfall in millions
+        # Shortfall in millions
         if "shortfall_abs" in drill.columns:
             drill["shortfall_abs_m"] = (safe_num(drill["shortfall_abs"]) / 1_000_000).round(2)
         else:
-            drill["shortfall_abs_m"] = None
+            drill["shortfall_abs_m"] = pd.NA
 
         cols = [
             "country", "commodity",
@@ -299,15 +336,12 @@ else:
             "year"
         ]
         cols = [c for c in cols if c in drill.columns]
+        drill = drill[cols].copy()
 
-        drill = drill[cols].sort_values(
-            [c for c in ["shortfall_abs_m", "risk_score"] if c in drill.columns],
-            ascending=[False, False]
-        )
+        # Safe sort drilldown (THIS fixes your ValueError)
+        drill = safe_sort(drill, by=["shortfall_abs_m", "risk_score"], ascending=[False, False])
 
         st.dataframe(drill, use_container_width=True)
-    else:
-        st.info("No drilldown records found for this selection.")
 
 
 # Download
