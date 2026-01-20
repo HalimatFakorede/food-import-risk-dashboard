@@ -1,19 +1,17 @@
 # Food Import Risk Dashboard
 
-## What this project is about
+## Why this project exists
 
-Many countries depend on food imports.
-When imports are disrupted (wars, climate shocks, trade bans), food supply can drop quickly.
+Many countries depend on food imports to feed their population.
+When imports are disrupted by conflict, climate shocks, or trade restrictions, food supply can drop fast.
 
-This project answers one simple question:
+This project answers one clear question:
 
 > **If food imports fall, which countries are most exposed, and by how much?**
 
-The dashboard simulates import shocks (10%, 20%, 35%, 50%) and shows:
+The dashboard simulates import shocks (10%, 20%, 35%, 50%) and shows how food availability changes across countries and commodities.
 
-* how much food supply is lost
-* which countries are structurally fragile
-* how risk changes as shocks get worse
+This is built for **analysis and understanding**, not predictions.
 
 ---
 
@@ -21,20 +19,26 @@ The dashboard simulates import shocks (10%, 20%, 35%, 50%) and shows:
 
 ### 1. Import shock simulation
 
-For each country and commodity:
+For each country and commodity, the system uses:
 
-* current production
-* imports and exports
-* apparent consumption
-* how much consumption is lost under an import shock
+* apparent food consumption
+* import volumes
+* import dependency
+
+It then simulates what happens when imports fall.
 
 Example:
 
-> A 35% import shock means 35% of imports disappear, not total supply.
+> A 35% import shock means 35% of imports disappear, not total food supply.
+
+The result is a food shortfall, shown in:
+
+* absolute terms (million tonnes)
+* percentage of consumption
 
 ---
 
-### 2. Risk score (structural risk)
+### 2. Structural risk score
 
 Each country–commodity pair has a risk score (0–1) based on:
 
@@ -42,57 +46,57 @@ Each country–commodity pair has a risk score (0–1) based on:
 * how volatile imports are
 * how volatile production is
 
-Risk bands:
+Risk levels are grouped into:
 
 * **Low**
 * **Medium**
 * **High**
 
-This separates:
+This helps separate:
 
-* *big shortfall but resilient countries*
-* *smaller shortfall but fragile countries*
+* countries that can absorb shocks
+* countries that are structurally fragile
 
 ---
 
-### 3. Top risk table
+### 3. Countries most exposed
 
 Countries are ranked by:
 
-* **absolute food shortfall** (in million tonnes)
+* **absolute food shortfall (million tonnes)**
 
-This answers:
+This answers a practical question:
 
-> “Where is the biggest food gap if imports fail?”
+> “Where does the biggest food gap appear if imports fail?”
 
 ---
 
 ### 4. Country drilldown
 
-Pick a country and see:
+You can select a country and see:
 
-* all its major commodities
+* all major food commodities
 * risk score per commodity
-* import dependence
-* how shocks affect consumption
+* import dependency
+* how different shocks affect consumption
 
-This makes the dashboard usable for policy and analysis, not just charts.
+This makes the dashboard useful for policy thinking, not just charts.
 
 ---
 
-### 5. Comparison mode (shock vs shock)
+### 5. Shock comparison
 
-You can compare two shocks (e.g. 20% vs 35%).
+You can compare two shocks, for example 10% vs 20% or 20% vs 35%.
 
 This shows:
 
-* how much worse things get as shocks increase
-* which countries deteriorate fastest
+* how fast shortages grow
+* which countries deteriorate most quickly
 
-Example:
+Example insight:
 
-> “At 20% shock, the shortfall is manageable.
-> At 35%, it becomes critical.”
+> “At 10%, the system absorbs the shock.
+> At 35%, the situation becomes serious.”
 
 ---
 
@@ -100,62 +104,60 @@ Example:
 
 You can focus on:
 
-* **Africa only**
-* **EU only**
-* or **All countries**
+* **Africa**
+* **EU**
+* **All countries**
 
-This helps regional analysis and storytelling.
+This supports regional analysis and clear storytelling.
 
 ---
 
 ## Data sources
 
-* **FAOSTAT** (production, trade, consumption)
+* **FAOSTAT** (production, trade, consumption data)
 * Latest available global year in the dataset
 
-Data is processed and cleaned into:
-
-* production tables
-* trade tables
-* merged country–commodity snapshots
+The data is cleaned and processed into country–commodity snapshots before simulation.
 
 ---
 
-## How the system is built
+## How the dashboard is built
 
-### Backend (FastAPI)
+### Data processing
 
-* `/risk/top`: live simulation
-* `/risk/top_cached`: fast precomputed results
-* `/risk/country/{country}`: country drilldown
-* cached parquet files for common shocks
+* Food production, imports, and consumption are cleaned and merged
+* Import shocks are simulated using clear, transparent rules
+* Results are saved as parquet files
 
-### Frontend (Streamlit)
+These parquet files are published using GitHub Releases and act as the data source.
 
-* interactive dashboard
-* charts and tables
-* comparison and region filters
-* CSV export
+---
+
+### Dashboard (Streamlit)
+
+* Loads data directly from GitHub Releases
+* No backend server required
+* Cached to avoid repeated downloads
+* Interactive tables and charts
+* Shock comparison and region filters
+* CSV export for further analysis
+
+This keeps the system simple, fast, and free to deploy.
 
 ---
 
 ## Project structure
-- `src/` FastAPI backend + simulation logic  
-- `app.py` Streamlit dashboard  
-- `notebooks/` data processing + cached shock generation  
-- `assets/` screenshots for the README
+
+```
+app.py        Streamlit dashboard
+simulate.py  import shock simulation logic
+notebooks/   data preparation and shock generation
+assets/      screenshots for this README
+```
 
 ---
 
-## How to run locally
-
-### 1. Start the API
-
-```bash
-uvicorn src.api:app --reload
-```
-
-### 2. Start the dashboard
+## Run locally
 
 ```bash
 streamlit run app.py
@@ -167,36 +169,69 @@ Then open:
 http://localhost:8501
 ```
 
+No database or API setup needed.
+
 ---
 
-## How to read the results 
+## How to read the results (example)
 
-Example:
-
-**Japan - Maize**
+**Japan – Maize**
 
 * import dependency ≈ 100%
-* 35% shock means ~35% of maize supply disappears
+* a 35% import shock removes ~35% of maize supply
 * ~5.3 million tonnes shortfall
 * **Medium–High risk**
 
 Meaning:
 
-> Japan’s food system works normally,
-> but it is very fragile if imports fail.
+> Japan’s food system works in normal conditions,
+> but it is very fragile if imports are disrupted.
 
 ---
 
 ## Screenshots
 
-### Main view (table)
-![Main view](assets/dashboard_table.png)
+### Countries most exposed
 
-### Exposure chart
-![Exposure chart](assets/dashboard_chart.png)
+Shows countries ranked by food shortfall.
+
+`assets/dashboard_main_table.png`
+
+---
+
+### Exposure under a single shock
+
+Shows how shortfalls are distributed across countries.
+
+`assets/dashboard_exposure_chart.png`
+
+---
 
 ### Shock comparison
-![Shock comparison](assets/dashboard_compare.png)
+
+Shows how shortages increase between two shock levels.
+
+`assets/dashboard_shock_comparison.png`
+
+---
 
 ### Country drilldown
-![Country drilldown](assets/dashboard_drilldown.png)
+
+Shows commodity-level risk and exposure for one country.
+
+`assets/dashboard_country_drilldown.png`
+
+---
+
+## Why this project matters
+
+Food shocks are already happening.
+
+This project shows:
+
+* where food systems break first
+* which countries are most vulnerable
+* how quickly risk escalates
+
+It demonstrates how data can be used to understand risks, not just build models.
+
